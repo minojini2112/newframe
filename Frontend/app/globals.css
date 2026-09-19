@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0b0e14;
+  --panel: #12161f;
+  --panel-elevated: #181d28;
+  --border: rgba(255, 255, 255, 0.06);
+  --text: #e8ecf1;
+  --muted: #7c8698;
+  --warm: #ff7a45;
+  --cool: #29d3c6;
+  --good: #7cdb6b;
+  --warn: #f5c542;
+  --bad: #f07178;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+@layer utilities {
+  .panel {
+    @apply rounded-2xl border border-white/[0.06] bg-[var(--panel)];
+  }
+  .panel-header {
+    @apply text-[11px] uppercase tracking-[0.14em] text-[var(--muted)] font-[family-name:var(--font-mono)];
+  }
+}
