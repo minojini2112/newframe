@@ -1,5 +1,5 @@
-﻿r"""
-ISRO PS12 â€” ONE FILE Streamlit app (entire ISRO2026 workflow).
+r"""
+ISRO PS12 — ONE FILE Streamlit app (entire ISRO2026 workflow).
 
 Run (from anywhere):
     cd D:\AI\llmScience\ISRO2026
@@ -12,11 +12,11 @@ Prerequisite (run once):
     .venv\Scripts\python.exe ISRO2026\setup_rife.py
 
 Tabs:
-  1. Single triplet  â€” t0 + t2 -> predict t1 (+ metrics vs real t1)
-  2. Batch validate  â€” whole .nc folder, ISRO metrics report
-  3. Video / GIF     â€” increase frame rate of an animation
-  4. Motion vectors  â€” optical flow (u,v), quiver, ablation vs Farneback
-  5. Fine-tune       â€” train on GOES data
+  1. Single triplet  — t0 + t2 -> predict t1 (+ metrics vs real t1)
+  2. Batch validate  — whole .nc folder, ISRO metrics report
+  3. Video / GIF     — increase frame rate of an animation
+  4. Motion vectors  — optical flow (u,v), quiver, ablation vs Farneback
+  5. Fine-tune       — train on GOES data
 """
 
 from __future__ import annotations
@@ -121,7 +121,7 @@ def rad_to_rgb(rad: np.ndarray, vmin: float, vmax: float, size: int) -> np.ndarr
 
 
 def rad_to_gray01(rad: np.ndarray, vmin: float, vmax: float, size: int) -> np.ndarray:
-    """Stretched grayscale [0,1] at display resolution â€” aligned with rad_to_rgb."""
+    """Stretched grayscale [0,1] at display resolution — aligned with rad_to_rgb."""
     img = np.nan_to_num(rad, nan=vmin)
     if vmax <= vmin:
         vmax = vmin + 1.0
@@ -137,7 +137,7 @@ def rad_to_diskmask(rad: np.ndarray, size: int) -> np.ndarray:
     real reading, False where it was off-disk fill/space (NaN in `rad`).
 
     `rad_to_gray01`/`rad_to_rgb` call `np.nan_to_num(rad, nan=vmin)`, which makes space
-    visually identical to a very cold pixel â€” that's exactly why downstream motion-vector
+    visually identical to a very cold pixel — that's exactly why downstream motion-vector
     filtering couldn't reliably tell space from clouds. This keeps the real footprint
     around. Resized with NEAREST (not bilinear) so the limb edge stays crisp instead of
     picking up a blurred halo of "maybe valid" pixels.
@@ -180,7 +180,7 @@ def estimate_scan_cadence_min(files: list[NcRef]) -> float:
 
 
 def resolve_gap_step(files: list[NcRef], gap_min: float) -> tuple[int, float]:
-    """Map requested minutes to scan skip count (GOES ABI â‰ˆ10 min cadence)."""
+    """Map requested minutes to scan skip count (GOES ABI ≈10 min cadence)."""
     cadence = estimate_scan_cadence_min(files)
     skip = max(1, int(round(gap_min / cadence)))
     return skip, skip * cadence
@@ -206,8 +206,8 @@ def find_triplets_by_gap(
     tolerance_min: float | None = None,
 ) -> list[tuple[int, int, int]]:
     """
-    Build triplets by skipping scans: t0, t0+skip, t0+2Â·skip.
-    On ~10 min GOES cadence: 10â†’skip1, 20â†’skip2, 30â†’skip3.
+    Build triplets by skipping scans: t0, t0+skip, t0+2·skip.
+    On ~10 min GOES cadence: 10→skip1, 20→skip2, 30→skip3.
     """
     if len(files) < 3:
         return []
@@ -289,23 +289,23 @@ def find_nc_folders() -> list[Path]:
     for p in NC_SEARCH_DIRS:
         if p.is_dir() and any(p.glob("*.nc")):
             found.append(p)
-    # Arthur storm first â€” more scans, better for wider gaps
+    # Arthur storm first — more scans, better for wider gaps
     return sorted(found, key=lambda p: (0 if "arthur" in p.name.lower() else 1, str(p)))
 
 
 def folder_label(path: Path) -> str:
     n = len(list_nc_files(path))
     if "arthur" in path.name.lower():
-        return f"Arthur storm â€” {n} scans (20â€“30 min gaps, active weather)"
+        return f"Arthur storm — {n} scans (20–30 min gaps, active weather)"
     if "goes19" in path.name.lower() or "c13" in path.name.lower():
-        return f"Calm day â€” {n} scans (10 min gaps only)"
+        return f"Calm day — {n} scans (10 min gaps only)"
     return f"{path.name} ({n} scans)"
 
 
 
 def format_utc(dt: datetime | None) -> str:
     if dt is None:
-        return "â€”"
+        return "—"
     return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
@@ -334,30 +334,30 @@ def show_time_info(
     if not (t0_scan and t2_scan):
         st.caption("Timestamps not parsed (need GOES filenames with `_sYYYYJJJHHMMSSd_`).")
         if target_gap_min is not None:
-            st.caption(f"Target step: **{target_gap_min:.0f} min** (t0â†’t2 span **{target_gap_min * 2:.0f} min**).")
+            st.caption(f"Target step: **{target_gap_min:.0f} min** (t0→t2 span **{target_gap_min * 2:.0f} min**).")
         return
 
     gap_total = t2_scan - t0_scan
     t_pred = t0_scan + gap_total / 2
 
     rows = [
-        {"Frame": "t0 â€” input to model", "Time (UTC)": format_utc(t0_scan)},
+        {"Frame": "t0 — input to model", "Time (UTC)": format_utc(t0_scan)},
     ]
     if t1_gt_scan:
-        rows.append({"Frame": "t1 â€” ground truth (real scan)", "Time (UTC)": format_utc(t1_gt_scan)})
-        rows.append({"Frame": "Gap t0 â†’ t1 (actual)", "Time (UTC)": format_gap(t1_gt_scan - t0_scan)})
-        rows.append({"Frame": "Gap t1 â†’ t2 (actual)", "Time (UTC)": format_gap(t2_scan - t1_gt_scan)})
+        rows.append({"Frame": "t1 — ground truth (real scan)", "Time (UTC)": format_utc(t1_gt_scan)})
+        rows.append({"Frame": "Gap t0 → t1 (actual)", "Time (UTC)": format_gap(t1_gt_scan - t0_scan)})
+        rows.append({"Frame": "Gap t1 → t2 (actual)", "Time (UTC)": format_gap(t2_scan - t1_gt_scan)})
     rows.extend([
-        {"Frame": "t2 â€” input to model", "Time (UTC)": format_utc(t2_scan)},
-        {"Frame": "Gap t0 â†’ t2 (total)", "Time (UTC)": format_gap(gap_total)},
-        {"Frame": "Predicted t1 â€” RIFE midpoint", "Time (UTC)": format_utc(t_pred)},
+        {"Frame": "t2 — input to model", "Time (UTC)": format_utc(t2_scan)},
+        {"Frame": "Gap t0 → t2 (total)", "Time (UTC)": format_gap(gap_total)},
+        {"Frame": "Predicted t1 — RIFE midpoint", "Time (UTC)": format_utc(t_pred)},
     ])
     if target_gap_min is not None:
         rows.insert(
             0,
             {
-                "Frame": "Target step (t0â†’t1, t1â†’t2)",
-                "Time (UTC)": f"{target_gap_min:.0f} min each Â· {target_gap_min * 2:.0f} min total",
+                "Frame": "Target step (t0→t1, t1→t2)",
+                "Time (UTC)": f"{target_gap_min:.0f} min each · {target_gap_min * 2:.0f} min total",
             },
         )
     if t1_gt_scan:
@@ -387,13 +387,13 @@ def show_input_row(
         st.image(t0, width="stretch")
     with c1:
         st.markdown("**Ground-truth t1**")
-        st.caption("Hidden from model Â· used only for metrics")
+        st.caption("Hidden from model · used only for metrics")
         if name_t1:
             st.caption(f"`{name_t1}`")
         if t1_gt is not None:
             st.image(t1_gt, width="stretch")
         else:
-            st.info("No ground-truth t1 â€” metrics disabled.")
+            st.info("No ground-truth t1 — metrics disabled.")
     with c2:
         st.markdown("**Input t2**")
         st.caption("Given to model")
@@ -407,14 +407,14 @@ def show_input_row(
 
 def gap_minutes_input(key: str, default: float = 10.0) -> float:
     return st.number_input(
-        "Minutes between frames (t0â†’t1 and t1â†’t2)",
+        "Minutes between frames (t0→t1 and t1→t2)",
         min_value=5.0,
         max_value=60.0,
         value=default,
         step=5.0,
         key=key,
-        help="GOES scans every ~10 min. Values snap to cadence: 10â†’10 min, 15â†’20 min, "
-        "20â†’20 min, 30â†’30 min. Total t0â†’t2 = 2Ã— actual step.",
+        help="GOES scans every ~10 min. Values snap to cadence: 10→10 min, 15→20 min, "
+        "20→20 min, 30→30 min. Total t0→t2 = 2× actual step.",
     )
 
 
@@ -429,19 +429,19 @@ def show_gap_resolution(
     actual = info["actual_step_min"]
     if abs(actual - gap_min) > 0.5:
         st.info(
-            f"Requested **{gap_min:.0f} min** â†’ using **{actual:.0f} min** per step "
-            f"({info['skip']} scans Ã— {info['cadence_min']:.0f} min cadence). "
-            f"t0â†’t2 span **â‰ˆ {info['total_span_min']:.0f} min**."
+            f"Requested **{gap_min:.0f} min** → using **{actual:.0f} min** per step "
+            f"({info['skip']} scans × {info['cadence_min']:.0f} min cadence). "
+            f"t0→t2 span **≈ {info['total_span_min']:.0f} min**."
         )
     else:
         st.caption(
-            f"Step **{actual:.0f} min** Â· t0â†’t2 **â‰ˆ {info['total_span_min']:.0f} min** Â· "
+            f"Step **{actual:.0f} min** · t0→t2 **≈ {info['total_span_min']:.0f} min** · "
             f"cadence **{info['cadence_min']:.0f} min**"
         )
     if info["n_triplets"] == 0:
         name = label or (folder.name if folder else "selection")
         st.warning(
-            f"**{name}** has only **{len(files)}** scans â€” need **â‰¥{info['min_files_needed']}** "
+            f"**{name}** has only **{len(files)}** scans — need **≥{info['min_files_needed']}** "
             f"for **{actual:.0f} min** steps. Try another date or a smaller gap."
         )
     return info
@@ -469,7 +469,7 @@ def model_checkpoint_dir() -> Path:
 
 
 def load_rife_checkpoint(model, ckpt_dir: Path) -> None:
-    """Load flownet.pkl â€” handles `module.*` prefix and ignores unused teacher/caltime keys."""
+    """Load flownet.pkl — handles `module.*` prefix and ignores unused teacher/caltime keys."""
     sd = torch.load(ckpt_dir / "flownet.pkl", map_location="cpu")
     sd = {k.replace("module.", ""): v for k, v in sd.items()}
     wanted = model.flownet.state_dict()
@@ -603,7 +603,7 @@ def ssim(a, b):
 
 
 def fsim(a, b):
-    """FSIM via piq â€” luminance-only (thermal IR is single-channel, not FSIMc RGB)."""
+    """FSIM via piq — luminance-only (thermal IR is single-channel, not FSIMc RGB)."""
     from piq import fsim as fsim_fn
 
     x = torch.from_numpy(gray01(a)).unsqueeze(0).unsqueeze(0).float()
@@ -633,7 +633,7 @@ def flow_to_rgb(u: np.ndarray, v: np.ndarray, max_mag: float | None = None) -> n
 
 
 def flow_smoothness(u: np.ndarray, v: np.ndarray) -> float:
-    """Mean gradient magnitude â€” lower = smoother flow."""
+    """Mean gradient magnitude — lower = smoother flow."""
     du = np.diff(u, axis=1)
     dv = np.diff(v, axis=0)
     return float(np.mean(np.abs(du)) + np.mean(np.abs(dv)))
@@ -685,7 +685,7 @@ def extract_rife_flow(
 
 
 def estimate_motion_vectors(t0: np.ndarray, t2: np.ndarray, model=None, device=None, scale: float = 1.0):
-    """Dense midpoint AMV (u,v) in pixels â€” bidirectional average from RIFE IFNet."""
+    """Dense midpoint AMV (u,v) in pixels — bidirectional average from RIFE IFNet."""
     if model is None or device is None:
         raise ValueError("Pass model and device from get_model()")
     out = extract_rife_flow(t0, t2, model, device, scale)
@@ -776,7 +776,7 @@ def plot_flow_quiver(
         fig.colorbar(q, ax=ax, fraction=0.046, pad=0.04, label=unit_lbl)
         ax.text(
             0.02, 0.98,
-            f"Arrow length fixed Â· color = speed ({unit_lbl})",
+            f"Arrow length fixed · color = speed ({unit_lbl})",
             transform=ax.transAxes, va="top", color="white", fontsize=8,
             bbox=dict(facecolor="black", alpha=0.55, pad=3),
         )
@@ -923,7 +923,7 @@ def _cached_list_scans(source_id: str, day_iso: str, hour: int | None) -> list[d
 def browse_catalog_ui(key_prefix: str, size: int) -> tuple | None:
     """Pick satellite + UTC date; list and load triplets from S3/mount (no local copy)."""
     sources = satellite_sources()
-    st.markdown("**AWS satellite catalog** â€” data streamed from S3 or instance mount")
+    st.markdown("**AWS satellite catalog** — data streamed from S3 or instance mount")
 
     source_id = st.selectbox(
         "Satellite",
@@ -946,14 +946,14 @@ def browse_catalog_ui(key_prefix: str, size: int) -> tuple | None:
     if src.fmt == "mount":
         roots = mount_roots()
         st.caption(
-            f"Mount paths: `{', '.join(roots)}` Â· filter: `{src.file_filter}` Â· var: `{src.rad_var}`"
+            f"Mount paths: `{', '.join(roots)}` · filter: `{src.file_filter}` · var: `{src.rad_var}`"
         )
     else:
-        st.caption(f"Bucket: `{src.bucket}` Â· filter: `{src.file_filter}` Â· var: `{src.rad_var}`")
+        st.caption(f"Bucket: `{src.bucket}` · filter: `{src.file_filter}` · var: `{src.rad_var}`")
 
     list_done_key = f"{key_prefix}_list_done"
     if st.button("List scans", key=f"{key_prefix}_list", type="secondary"):
-        with st.spinner("Listing objects (S3 API / mount)â€¦"):
+        with st.spinner("Listing objects (S3 API / mount)…"):
             try:
                 dicts = _cached_list_scans(source_id, day.isoformat(), hour)
             except Exception as exc:
@@ -1001,7 +1001,7 @@ def browse_catalog_ui(key_prefix: str, size: int) -> tuple | None:
                 {
                     "file": r.name,
                     "scan_utc": format_utc(r.scan_time),
-                    "uri": r.uri[:80] + ("â€¦" if len(r.uri) > 80 else ""),
+                    "uri": r.uri[:80] + ("…" if len(r.uri) > 80 else ""),
                 }
                 for r in refs[:50]
             ],
@@ -1019,20 +1019,20 @@ def browse_catalog_ui(key_prefix: str, size: int) -> tuple | None:
     if not triplets:
         return None
 
-    st.caption(f"**{len(triplets)}** triplets Â· step **{info['actual_step_min']:.0f} min**")
+    st.caption(f"**{len(triplets)}** triplets · step **{info['actual_step_min']:.0f} min**")
     idx = st.slider("Triplet index", 0, max(0, len(triplets) - 1), 0, key=f"{key_prefix}_idx")
     if not st.button("Load triplet", key=f"{key_prefix}_load"):
         return None
 
     i0, i1, i2 = triplets[idx]
     rad_var = st.session_state.get(f"{key_prefix}_rad_var", src.rad_var)
-    with st.spinner("Streaming radianceâ€¦"):
+    with st.spinner("Streaming radiance…"):
         out = load_triplet_at_indices(refs, i0, i1, i2, size, rad_var=rad_var)
     return out + (info["actual_step_min"],)
 
 
 def load_triplet_ui(key_prefix: str, size: int) -> tuple | None:
-    """Shared triplet loader â€” AWS catalog or local folder."""
+    """Shared triplet loader — AWS catalog or local folder."""
     if aws_deploy_mode() or not find_nc_folders():
         return browse_catalog_ui(key_prefix, size)
 
@@ -1046,7 +1046,7 @@ def load_triplet_ui(key_prefix: str, size: int) -> tuple | None:
     triplets = find_triplets_by_gap(files, gap_min)
     if not triplets:
         return None
-    st.caption(f"**{len(triplets)}** triplets Â· step **{info['actual_step_min']:.0f} min**")
+    st.caption(f"**{len(triplets)}** triplets · step **{info['actual_step_min']:.0f} min**")
     idx = st.slider("Triplet index", 0, max(0, len(triplets) - 1), 0, key=f"{key_prefix}_idx")
     if not st.button("Load triplet", key=f"{key_prefix}_load"):
         return None
@@ -1120,7 +1120,7 @@ def run_batch_validation_gaps(
 def sidebar_settings():
     st.sidebar.title("ISRO PS12")
     if aws_deploy_mode():
-        st.sidebar.success("AWS mode â€” satellite data read from S3/mount")
+        st.sidebar.success("AWS mode — satellite data read from S3/mount")
     if not FINETUNED_CKPT.exists():
         st.sidebar.error("GOES fine-tuned checkpoint missing")
         st.sidebar.code(str(FINETUNED_CKPT))
@@ -1128,17 +1128,17 @@ def sidebar_settings():
         st.stop()
     st.sidebar.info("Model: GOES fine-tuned (FP32)")
     if not torch.cuda.is_available():
-        st.sidebar.caption("No CUDA â€” inference uses FP32 on CPU.")
+        st.sidebar.caption("No CUDA — inference uses FP32 on CPU.")
     scale = st.sidebar.selectbox("RIFE scale", [1.0, 0.5, 0.25], index=0)
     size = st.sidebar.select_slider("Image size", [256, 384, 512, 768], value=512)
     if rife_ready():
         dev = "CUDA" if torch.cuda.is_available() else "CPU"
-        st.sidebar.success(f"RIFE OK ({dev}) Â· GOES fine-tuned")
+        st.sidebar.success(f"RIFE OK ({dev}) · GOES fine-tuned")
     else:
         st.sidebar.error("RIFE not installed")
         st.sidebar.code(setup_rife_hint())
         if st.sidebar.button("Run setup now"):
-            with st.spinner("Downloading RIFEâ€¦"):
+            with st.spinner("Downloading RIFE…"):
                 subprocess.run([sys.executable, str(ROOT / "setup_rife.py")], check=False)
             st.rerun()
         st.stop()
@@ -1146,7 +1146,7 @@ def sidebar_settings():
 
 
 def tab_single(scale, size):
-    st.header("Single triplet: t0 + t2 â†’ predict t1")
+    st.header("Single triplet: t0 + t2 → predict t1")
     st.caption("Model receives **t0** and **t2** only. **Ground-truth t1** is withheld for validation.")
 
     input_modes = ["AWS S3 catalog", "Local .nc folder", "Upload images", "Upload .nc"]
@@ -1272,7 +1272,7 @@ def tab_single(scale, size):
     st.divider()
     if st.button("Predict t1 with RIFE", type="primary"):
         model, device, _, ckpt, fp16 = get_model()
-        with st.spinner("Interpolating middle frameâ€¦"):
+        with st.spinner("Interpolating middle frame…"):
             pred = predict_t1(t0, t2, model, device, scale, fp16)
             lin = linear_t1(t0, t2)
         st.session_state.s_pred = pred
@@ -1325,7 +1325,7 @@ def tab_single(scale, size):
     gap_amv = st.session_state.get("s_gap", 10.0)
     st.markdown(amv_interval_caption(gap_amv))
     st.caption(
-        "Phase-1 flow grouped into small patches â€” **no Phase-3 mask**. "
+        "Phase-1 flow grouped into small patches — **no Phase-3 mask**. "
         "One arrow per grid cell (window-averaged motion). "
         "No arrow where that patch has no motion; slow motion kept. "
         "Earth-disk corners excluded."
@@ -1342,7 +1342,7 @@ def tab_single(scale, size):
 
     if st.button("Generate motion vectors & timelapse", type="secondary", key="single_gen_amv"):
         model, device, _, _, _ = get_model()
-        with st.spinner("Extracting AMV and drawing arrowsâ€¦"):
+        with st.spinner("Extracting AMV and drawing arrows…"):
             rife = extract_rife_flow(t0, t2, model, device, scale)
             u_amv, v_amv = rife_amv_uv(rife)
             h_amv, w_amv = u_amv.shape
@@ -1367,7 +1367,7 @@ def tab_single(scale, size):
     if sparse_px is None:
         st.info("Click **Generate motion vectors & timelapse** to draw arrows and build GIFs.")
     elif sparse_px.get("n_shown", 0) == 0:
-        st.warning("No arrows to draw â€” try a smaller grid stride or load a triplet with more cloud texture.")
+        st.warning("No arrows to draw — try a smaller grid stride or load a triplet with more cloud texture.")
     else:
         on_disk = st.session_state.get("s_on_disk")
         arrow_kw = dict(
@@ -1381,8 +1381,8 @@ def tab_single(scale, size):
         arrow_layer = render_arrow_layer(t0.shape[:2], sparse_px, **arrow_kw)
         st.caption(
             f"**{sparse_px['n_shown']}/{sparse_px['n_grid']}** patch arrows "
-            f"(stride {single_step}px Â· window {single_window}px) Â· "
-            f"no quality mask Â· slow motion included"
+            f"(stride {single_step}px · window {single_window}px) · "
+            f"no quality mask · slow motion included"
         )
 
         st.markdown("#### Four frames with AMV arrows")
@@ -1402,13 +1402,13 @@ def tab_single(scale, size):
                         width="stretch",
                     )
                 else:
-                    st.caption(f"{lbl} â€” not loaded")
+                    st.caption(f"{lbl} — not loaded")
 
         lapses = build_motion_timelapses(t0, t1_gt, t2, pred, sparse_px, arrow_kw=arrow_kw)
         st.markdown("#### Timelapse GIFs")
         lc1, lc2 = st.columns(2)
         with lc1:
-            st.markdown("**Predicted timelapse** â€” t0 â†’ RIFE t1 â†’ t2")
+            st.markdown("**Predicted timelapse** — t0 → RIFE t1 → t2")
             st.image(
                 lapses["predicted"][1],
                 caption="Preview: predicted mid-frame + arrows",
@@ -1424,7 +1424,7 @@ def tab_single(scale, size):
             )
         with lc2:
             if lapses["ground_truth"] is not None:
-                st.markdown("**Ground-truth timelapse** â€” t0 â†’ real t1 â†’ t2")
+                st.markdown("**Ground-truth timelapse** — t0 → real t1 → t2")
                 st.image(
                     lapses["ground_truth"][1],
                     caption="Preview: real mid-frame + arrows",
@@ -1439,12 +1439,12 @@ def tab_single(scale, size):
                     key="single_dl_gt_timelapse",
                 )
             else:
-                st.info("No ground-truth t1 loaded â€” only the predicted timelapse is available.")
+                st.info("No ground-truth t1 loaded — only the predicted timelapse is available.")
 
 
 def tab_batch(scale, size):
     st.header("Batch validate")
-    st.caption("Runs all triplets: t0+t2â†’pred t1, compare each to real t1.")
+    st.caption("Runs all triplets: t0+t2→pred t1, compare each to real t1.")
 
     use_catalog = aws_deploy_mode() or not find_nc_folders()
     refs: list[NcRef] = []
@@ -1471,7 +1471,7 @@ def tab_batch(scale, size):
         hour = None if hour_sel == "All hours" else int(hour_sel.split(":")[0])
         gap_min = gap_minutes_input("batch_gap", default=src.default_cadence_min)
         if st.button("List scans for batch", key="batch_list"):
-            with st.spinner("Listing S3â€¦"):
+            with st.spinner("Listing S3…"):
                 try:
                     dicts = _cached_list_scans(source_id, day.isoformat(), hour)
                 except Exception as exc:
@@ -1491,7 +1491,7 @@ def tab_batch(scale, size):
     else:
         folders = find_nc_folders()
         if not folders:
-            st.warning("No local .nc folder â€” use AWS S3 catalog.")
+            st.warning("No local .nc folder — use AWS S3 catalog.")
             return
         folder = st.selectbox("Folder", folders, format_func=folder_label, key="batch_folder")
         gap_min = gap_minutes_input("batch_gap", default=20.0)
@@ -1502,7 +1502,7 @@ def tab_batch(scale, size):
     n_trips = info.get("n_triplets", 0)
     if n_trips == 0:
         return
-    st.caption(f"**{n_trips}** triplets Â· actual step **{info['actual_step_min']:.0f} min**")
+    st.caption(f"**{n_trips}** triplets · actual step **{info['actual_step_min']:.0f} min**")
     limit = st.number_input("Max triplets (0=all)", 0, 500, 0)
     lim = None if limit == 0 else int(limit)
 
@@ -1517,8 +1517,8 @@ def tab_batch(scale, size):
         import pandas as pd
         df = pd.DataFrame(rows)
         st.caption(
-            f"Weights: `{ckpt}` Â· {label} Â· step **{info['actual_step_min']:.0f} min** Â· "
-            f"t0â†’t2 **â‰ˆ {info['total_span_min']:.0f} min**"
+            f"Weights: `{ckpt}` · {label} · step **{info['actual_step_min']:.0f} min** · "
+            f"t0→t2 **≈ {info['total_span_min']:.0f} min**"
         )
         st.dataframe(df, width="stretch")
 
@@ -1526,7 +1526,7 @@ def tab_batch(scale, size):
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("RIFE SSIM", f"{df['rife_ssim'].mean():.4f}")
         c2.metric("Linear SSIM", f"{df['linear_ssim'].mean():.4f}")
-        c3.metric("Î” SSIM", f"{delta:+.4f}", delta_color="normal" if delta >= 0 else "inverse")
+        c3.metric("Δ SSIM", f"{delta:+.4f}", delta_color="normal" if delta >= 0 else "inverse")
         c4.metric("RIFE FSIM", f"{df['rife_fsim'].mean():.4f}")
         c5.metric("Triplets", len(df))
 
@@ -1574,10 +1574,10 @@ def tab_video(scale, size):
 
     if st.button("Interpolate", type="primary"):
         model, device, version, _, fp16 = get_model()
-        with st.spinner("Interpolatingâ€¦"):
+        with st.spinner("Interpolating…"):
             smooth = upscale_sequence(frames, multi, model, device, version, scale, fp16)
         st.session_state.v_out = smooth
-        st.success(f"{len(frames)} â†’ {len(smooth)} frames")
+        st.success(f"{len(frames)} → {len(smooth)} frames")
 
     if "v_out" not in st.session_state:
         return
@@ -1592,7 +1592,7 @@ def tab_video(scale, size):
 def tab_motion(scale, size):
     st.header("Motion vectors / AMV")
     st.caption(
-        "Midpoint **AMV** from bidirectional RIFE flow (average of t0â†’t1 and t2â†’t1), "
+        "Midpoint **AMV** from bidirectional RIFE flow (average of t0→t1 and t2→t1), "
         "plus Farneback baseline and warp ablation vs ground-truth t1."
     )
 
@@ -1609,7 +1609,7 @@ def tab_motion(scale, size):
     t2 = st.session_state.get("m_t2")
     t1_gt = st.session_state.get("m_t1")
     if t0 is None or t2 is None:
-        st.info("Load a triplet above (Arthur + 20â€“30 min gap recommended).")
+        st.info("Load a triplet above (Arthur + 20–30 min gap recommended).")
         return
 
     show_input_row(
@@ -1639,13 +1639,13 @@ def tab_motion(scale, size):
         "Shrink Earth mask inward (px)", 0, 15, 3,
         help="Excludes a thin band just inside the Earth limb from AMV validity. "
              "That band is contaminated by a resize-blending halo (real edge "
-             "brightness mixed with off-disk fill) that mimics cloud texture â€” "
+             "brightness mixed with off-disk fill) that mimics cloud texture — "
              "raise this if the quality-mask ring around the disk edge persists.",
     )
 
     if st.button("Extract flow & compare methods", type="primary"):
         model, device, _, ckpt, _ = get_model()
-        with st.spinner("Estimating motion vectorsâ€¦"):
+        with st.spinner("Estimating motion vectors…"):
             rows, data = compare_interpolation_methods(t0, t2, t1_gt, model, device, scale)
         u_amv, v_amv = data["amv_uv"]
         h_amv, w_amv = u_amv.shape
@@ -1698,12 +1698,12 @@ def tab_motion(scale, size):
     disk_masks = st.session_state.get("m_disk")
     if disk_masks:
         # A pixel only has a meaningful bidirectional AMV if it was real Earth data
-        # (not off-disk fill) in *both* t0 and t2 â€” intersect the two footprints.
+        # (not off-disk fill) in *both* t0 and t2 — intersect the two footprints.
         on_disk = disk_masks[0] & disk_masks[2]
         if on_disk.shape != u_amv.shape:
             on_disk = resize_mask_nearest(on_disk, *u_amv.shape)
     else:
-        # No radiance-derived footprint (e.g. legacy/plain-image load) â€” approximate
+        # No radiance-derived footprint (e.g. legacy/plain-image load) — approximate
         # with the full-disk circle geometry rather than treating every pixel as Earth.
         on_disk = full_disk_geometric_mask(*u_amv.shape)
     on_disk = erode_mask(on_disk, int(edge_erode_px))
@@ -1729,7 +1729,7 @@ def tab_motion(scale, size):
         if ms and filt["sparse_ms"] and filt["sparse_ms"]["n_shown"] > 0:
             fig = plot_flow_quiver(
                 ms["ux_ms"], ms["uy_ms"],
-                title=f"Filtered AMV ({gap:.0f} min) â€” m/s",
+                title=f"Filtered AMV ({gap:.0f} min) — m/s",
                 background=bg_plot,
                 units="ms",
                 sparse=filt["sparse_ms"],
@@ -1737,7 +1737,7 @@ def tab_motion(scale, size):
         else:
             fig = plot_flow_quiver(
                 u_amv, v_amv,
-                title=f"Filtered AMV ({gap:.0f} min) â€” px",
+                title=f"Filtered AMV ({gap:.0f} min) — px",
                 background=bg_plot,
                 sparse=filt["sparse_px"],
             )
@@ -1757,39 +1757,39 @@ def tab_motion(scale, size):
         )
 
     # -------------------------------------------------------------------
-    # Phase 4: motion timelapse â€” apply the filtered AMV arrows to t0,
+    # Phase 4: motion timelapse — apply the filtered AMV arrows to t0,
     # ground-truth t1, t2, and the RIFE-predicted t1, then group them into
     # two 3-frame timelapse GIFs (ground truth vs. predicted) so the
     # direction of cloud motion can be checked visually against the arrows.
     # -------------------------------------------------------------------
-    st.subheader("Motion timelapse â€” does the arrow field match real cloud motion?")
+    st.subheader("Motion timelapse — does the arrow field match real cloud motion?")
     st.caption(
         "AMV arrows are drawn on t0, t2, and the middle frame, grouped into two "
-        "sequences: **ground truth** (real t0 â†’ real t1 â†’ real t2) and **predicted** "
-        "(t0 â†’ RIFE-predicted t1 â†’ t2). Download and play both to see whether the "
+        "sequences: **ground truth** (real t0 → real t1 → real t2) and **predicted** "
+        "(t0 → RIFE-predicted t1 → t2). Download and play both to see whether the "
         "clouds actually move the way the arrows point."
     )
     t1_pred = data.get("full")
     # Unfiltered: every stride-grid cell across the full frame, ignoring the
-    # texture/disagreement/RIFE-mask/on-disk quality mask above â€” this is the
+    # texture/disagreement/RIFE-mask/on-disk quality mask above — this is the
     # dense (u_amv, v_amv) field, just window-averaged and subsampled by stride
     # so arrows don't overlap on screen. No pixels are dropped for "quality".
     sparse_all = subsample_amv_grid(u_amv, v_amv, stride=quiver_step, window=quiver_window)
     if sparse_all["n_shown"] == 0:
-        st.info("No arrows to draw â€” try a smaller grid stride above.")
+        st.info("No arrows to draw — try a smaller grid stride above.")
     elif t1_pred is None:
-        st.info("Predicted t1 not available â€” run **Extract flow & compare methods** again.")
+        st.info("Predicted t1 not available — run **Extract flow & compare methods** again.")
     else:
         timelapse_ms = st.slider(
             "Frame duration (ms)", 200, 1500, 700, 100, key="m_timelapse_ms",
-            help="How long each of the 3 frames (t0 â†’ mid â†’ t2) is shown before looping.",
+            help="How long each of the 3 frames (t0 → mid → t2) is shown before looping.",
         )
-        st.caption(f"Showing all **{sparse_all['n_shown']}/{sparse_all['n_grid']}** grid arrows â€” quality filter not applied.")
+        st.caption(f"Showing all **{sparse_all['n_shown']}/{sparse_all['n_grid']}** grid arrows — quality filter not applied.")
         lapses = build_motion_timelapses(t0, t1_gt, t2, t1_pred, sparse_all)
 
         lc1, lc2 = st.columns(2)
         with lc1:
-            st.markdown("**Predicted timelapse** â€” t0 â†’ RIFE t1 â†’ t2")
+            st.markdown("**Predicted timelapse** — t0 → RIFE t1 → t2")
             st.image(lapses["predicted"][1], caption="Preview: predicted mid-frame + arrows", width="stretch")
             pred_gif = frames_to_gif_bytes(lapses["predicted"], duration_ms=timelapse_ms)
             st.download_button(
@@ -1801,7 +1801,7 @@ def tab_motion(scale, size):
             )
         with lc2:
             if lapses["ground_truth"] is not None:
-                st.markdown("**Ground-truth timelapse** â€” t0 â†’ real t1 â†’ t2")
+                st.markdown("**Ground-truth timelapse** — t0 → real t1 → t2")
                 st.image(lapses["ground_truth"][1], caption="Preview: real mid-frame + arrows", width="stretch")
                 gt_gif = frames_to_gif_bytes(lapses["ground_truth"], duration_ms=timelapse_ms)
                 st.download_button(
@@ -1812,9 +1812,9 @@ def tab_motion(scale, size):
                     key="dl_gt_timelapse",
                 )
             else:
-                st.info("No ground-truth t1 was loaded for this triplet â€” only the predicted timelapse is available.")
+                st.info("No ground-truth t1 was loaded for this triplet — only the predicted timelapse is available.")
 
-    with st.expander("Dense / unfiltered views (Phase 1â€“2)", expanded=show_dense):
+    with st.expander("Dense / unfiltered views (Phase 1–2)", expanded=show_dense):
         st.subheader("AMV visualization (bidirectional midpoint)")
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -1839,9 +1839,9 @@ def tab_motion(scale, size):
             )
 
         st.caption(
-            f"AMV: mean speed={mag_amv.mean():.2f} px, max={mag_amv.max():.2f} px Â· "
-            f"forward-only mean={mag_fwd.mean():.2f} px Â· "
-            f"disagreement mean={disagree.mean():.2f} px Â· "
+            f"AMV: mean speed={mag_amv.mean():.2f} px, max={mag_amv.max():.2f} px · "
+            f"forward-only mean={mag_fwd.mean():.2f} px · "
+            f"disagreement mean={disagree.mean():.2f} px · "
             f"smoothness={flow_smoothness(u_amv, v_amv):.4f}"
         )
 
@@ -1853,7 +1853,7 @@ def tab_motion(scale, size):
             with c1:
                 fig = plot_flow_quiver(
                     ms["ux_ms"], ms["uy_ms"], step=quiver_step,
-                    title=f"AMV quiver ({gap:.0f} min) â€” m/s",
+                    title=f"AMV quiver ({gap:.0f} min) — m/s",
                     background=bg_plot,
                     units="ms",
                 )
@@ -1870,7 +1870,7 @@ def tab_motion(scale, size):
         else:
             st.info("Re-run **Extract flow** to compute m/s velocities.")
 
-    with st.expander("Forward-only flow (t0 â†’ midpoint, for comparison)"):
+    with st.expander("Forward-only flow (t0 → midpoint, for comparison)"):
         c1, c2 = st.columns(2)
         with c1:
             st.image(flow_to_rgb(u_fwd, v_fwd), caption="Forward-only color map", width="stretch")
@@ -1902,18 +1902,105 @@ def tab_motion(scale, size):
             st.markdown("**Ground-truth t1**")
             st.image(t1_gt, width="stretch")
     else:
-        st.warning("No ground-truth t1 â€” flow maps only.")
+        st.warning("No ground-truth t1 — flow maps only.")
 
+
+def tab_finetune():
+    st.header("Two-stage fine-tuning")
+    st.markdown(
+        "**Stage 1** — statistical (`finetune_goes.py`, same as ISRO2026): maximize SSIM, beat linear.  \n"
+        "**Stage 2** — PINN physics (`finetune_physics.py`): refine flow on top of stage 1."
+    )
+
+    stat_ckpt = ROOT / "checkpoints" / "goes_finetuned_statistical" / "flownet.pkl"
+
+    if FINETUNED_CKPT.exists():
+        st.success(f"Checkpoint: `{FINETUNED_CKPT}`")
+        log_path = FINETUNED_DIR / "training_log.json"
+        if log_path.exists():
+            import json
+            meta = json.loads(log_path.read_text())
+            st.caption(f"Mode: **{meta.get('training_mode', '?')}** · stage **{meta.get('stage', '?')}**")
+            full = meta.get("full_eval", {})
+            if full:
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("RIFE SSIM", f"{full.get('rife_ssim', 0):.4f}")
+                c2.metric("Δ SSIM", f"{full.get('delta_ssim', 0):+.4f}")
+                c3.metric("Photo err", f"{full.get('photo_err', 0):.5f}" if "photo_err" in full else "—")
+                c4.metric("Flow smooth", f"{full.get('flow_smooth', 0):.4f}" if "flow_smooth" in full else "—")
+    else:
+        st.info("No checkpoint yet. Run **Stage 1** first.")
+
+    if stat_ckpt.exists():
+        st.caption(f"Stage 1 backup ready: `{stat_ckpt}`")
+
+    patch = st.selectbox("Patch size", [256, 384], index=0)
+
+    st.subheader("Stage 1 — Statistical (image quality)")
+    s1_epochs = st.slider("Stage 1 epochs", 40, 120, 60, key="s1_ep")
+    if st.button("Run Stage 1 — statistical", type="primary"):
+        cmd = [sys.executable, str(ROOT / "finetune_goes.py"), "--epochs", str(s1_epochs), "--patch", str(patch)]
+        st.code(" ".join(cmd))
+        log_box = st.empty()
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=str(ROOT), bufsize=1)
+        lines = []
+        for line in proc.stdout:
+            lines.append(line.rstrip())
+            log_box.code("\n".join(lines[-25:]))
+        proc.wait()
+        if proc.returncode == 0:
+            st.success("Stage 1 complete. Run Stage 2 for physics refinement.")
+            get_model.clear()
+            st.rerun()
+        else:
+            st.error(f"Stage 1 failed (exit {proc.returncode})")
+
+    st.subheader("Stage 2 — PINN physics (after stage 1)")
+    s2_epochs = st.slider("Stage 2 epochs", 20, 80, 40, key="s2_ep")
+    if not stat_ckpt.exists() and not (FINETUNED_CKPT.exists() and (FINETUNED_DIR / "training_log.json").exists()):
+        st.warning("Complete Stage 1 before Stage 2.")
+    elif st.button("Run Stage 2 — PINN physics"):
+        cmd = [sys.executable, str(ROOT / "finetune_physics.py"), "--epochs", str(s2_epochs), "--patch", str(patch)]
+        st.code(" ".join(cmd))
+        log_box = st.empty()
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=str(ROOT), bufsize=1)
+        lines = []
+        for line in proc.stdout:
+            lines.append(line.rstrip())
+            log_box.code("\n".join(lines[-25:]))
+        proc.wait()
+        if proc.returncode == 0:
+            st.success("Stage 2 complete.")
+            get_model.clear()
+            st.rerun()
+        else:
+            st.error(f"Stage 2 failed (exit {proc.returncode})")
 
 
 def main():
-    import streamlit as st
+    st.set_page_config("ISRO PS12", layout="wide", page_icon="🛰️")
     scale, size = sidebar_settings()
-    st.title("ISRO PS12 â€” Satellite Frame Interpolation")
-    t1, t2, t3 = st.tabs(["Single triplet", "Batch validate", "Motion vectors"])
+
+    st.title("ISRO PS12 — Satellite Frame Interpolation")
+    st.markdown(
+        "**Temporal super-resolution** — predict missing satellite frames with RIFE optical flow "
+        "(GOES fine-tuned weights). "
+        "On AWS, data is read directly from S3 or a bucket mount (not copied to the instance)."
+    )
+
+    t1, t2, t3, t4, t5 = st.tabs([
+        "① Single triplet", "② Batch validate", "③ Video / GIF",
+        "④ Motion vectors", "⑤ Fine-tune",
+    ])
     with t1: tab_single(scale, size)
     with t2: tab_batch(scale, size)
-    with t3: tab_motion(scale, size)
+    with t3: tab_video(scale, size)
+    with t4: tab_motion(scale, size)
+    with t5: tab_finetune()
+
+    st.divider()
+    st.caption("Stage 1: finetune_goes.py · Stage 2: finetune_physics.py")
+
 
 if __name__ == "__main__":
     main()
