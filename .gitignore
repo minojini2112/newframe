@@ -1,0 +1,52 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.dist/
+build/
+
+# RIFE — cloned + weights downloaded by setup_rife.py (large)
+Practical-RIFE/
+
+# Training outputs
+checkpoints/**
+!checkpoints/goes_finetuned/
+!checkpoints/goes_finetuned/flownet.pkl
+!checkpoints/goes_finetuned/training_log.json
+output/
+*.pkl
+!checkpoints/goes_finetuned/flownet.pkl
+
+# Generated on instance by setup_aws.sh
+.env.aws
+
+# Local satellite data (use S3 on AWS — do not commit)
+goes19_c13/
+goes19_c13_arthur/
+*.nc
+*.h5
+*.hdf
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Streamlit secrets (never commit credentials)
+.streamlit/secrets.toml
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Next.js frontend
+Frontend/node_modules/
+Frontend/.next/
+Frontend/out/
+Frontend/*.tsbuildinfo
+Frontend/next-env.d.ts
