@@ -1117,11 +1117,336 @@ def run_batch_validation_gaps(
 # 6. STREAMLIT UI
 # =============================================================================
 
+def sidebar_settings():
+    st.sidebar.title("ISRO PS12")
+    if aws_deploy_mode():
+        st.sidebar.success("AWS mode â€” satellite data read from S3/mount")
+    if not FINETUNED_CKPT.exists():
+        st.sidebar.error("GOES fine-tuned checkpoint missing")
+        st.sidebar.code(str(FINETUNED_CKPT))
+        st.sidebar.caption("Copy flownet.pkl into checkpoints/goes_finetuned/ before running.")
+        st.stop()
+    st.sidebar.info("Model: GOES fine-tuned (FP32)")
+    if not torch.cuda.is_available():
+        st.sidebar.caption("No CUDA â€” inference uses FP32 on CPU.")
+    scale = st.sidebar.selectbox("RIFE scale", [1.0, 0.5, 0.25], index=0)
+    size = st.sidebar.select_slider("Image size", [256, 384, 512, 768], value=512)
+    if rife_ready():
+        dev = "CUDA" if torch.cuda.is_available() else "CPU"
+        st.sidebar.success(f"RIFE OK ({dev}) Â· GOES fine-tuned")
+    else:
+        st.sidebar.error("RIFE not installed")
+        st.sidebar.code(setup_rife_hint())
+        if st.sidebar.button("Run setup now"):
+            with st.spinner("Downloading RIFEâ€¦"):
+                subprocess.run([sys.executable, str(ROOT / "setup_rife.py")], check=False)
+            st.rerun()
+        st.stop()
+    return scale, size
+
+
+def tab_single(scale, size):
+    st.header("Single triplet: t0 + t2 â†’ predict t1")
+    st.caption("Model receives **t0** and **t2** only. **Ground-truth t1** is withheld for validation.")
+
+    input_modes = ["AWS S3 catalog", "Local .nc folder", "Upload images", "Upload .nc"]
+    default_mode = 0 if aws_deploy_mode() else (1 if find_nc_folders() else 0)
+    mode = st.radio("Input", input_modes, horizontal=True, index=default_mode)
+    t0 = t2 = t1_gt = None
+    name_t0 = name_t1 = name_t2 = ""
+
+    if mode == "AWS S3 catalog":
+        loaded = browse_catalog_ui("single", size)
+        if loaded is not None:
+            t0, t1_gt, t2, name_t0, name_t1, name_t2, _rads, _disk, _refs, gap = loaded
+            st.session_state.update(
+                s_t0=t0, s_t1=t1_gt, s_t2=t2,
+                s_n0=name_t0, s_n1=name_t1, s_n2=name_t2,
+                s_rads=_rads, s_disk=_disk, s_refs=_refs,
+                s_pred=None, s_sparse_px=None, s_on_disk=None, s_gap=gap,
+            )
+        t0 = st.session_state.get("s_t0")
+        t2 = st.session_state.get("s_t2")
+        t1_gt = st.session_state.get("s_t1")
+        name_t0 = st.session_state.get("s_n0", "")
+        name_t1 = st.session_state.get("s_n1", "")
+        name_t2 = st.session_state.get("s_n2", "")
+
+    elif mode == "Local .nc folder":
+        folders = find_nc_folders()
+        if not folders:
+            st.warning("No .nc folder. Put GOES files in goes19_c13/ or goes19_c13_arthur/")
+            return
+        folder = st.selectbox("Folder", folders, format_func=folder_label)
+        gap_min = gap_minutes_input("single_gap", default=20.0)
+        files = list_nc_files(folder)
+        info = show_gap_resolution(files, gap_min, folder=folder)
+        triplets = find_triplets_by_gap(files, gap_min)
+        if not triplets:
+            return
+        st.caption(f"**{len(triplets)}** triplets available")
+        idx = st.slider("Triplet index", 0, max(0, len(triplets) - 1), 0)
+        if st.button("Load triplet"):
+            i0, i1, i2 = triplets[idx]
+            t0, t1_gt, t2, name_t0, name_t1, name_t2, _rads, _disk, _refs = load_triplet_at_indices(files, i0, i1, i2, size)
+            st.session_state.update(
+                s_t0=t0, s_t1=t1_gt, s_t2=t2,
+                s_n0=name_t0, s_n1=name_t1, s_n2=name_t2,
+                s_rads=_rads, s_disk=_disk, s_refs=_refs,
+                s_pred=None, s_sparse_px=None, s_on_disk=None, s_gap=info["actual_step_min"],
+            )
+        t0 = st.session_state.get("s_t0")
+        t2 = st.session_state.get("s_t2")
+        t1_gt = st.session_state.get("s_t1")
+        name_t0 = st.session_state.get("s_n0", "")
+        name_t1 = st.session_state.get("s_n1", "")
+        name_t2 = st.session_state.get("s_n2", "")
+
+    elif mode == "Upload images":
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            u0 = st.file_uploader("Input t0", type=["png", "jpg"], key="up_t0")
+        with c2:
+            u1 = st.file_uploader("Ground-truth t1", type=["png", "jpg"], key="up_t1")
+        with c3:
+            u2 = st.file_uploader("Input t2", type=["png", "jpg"], key="up_t2")
+        if u0:
+            t0 = pil_to_rgb(u0, size)
+            name_t0 = u0.name
+        if u2:
+            t2 = pil_to_rgb(u2, size)
+            name_t2 = u2.name
+        if u1:
+            t1_gt = pil_to_rgb(u1, size)
+            name_t1 = u1.name
+
+    else:
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            f0 = st.file_uploader("Input t0 (.nc)", type=["nc"], key="nc_t0")
+        with c2:
+            f1 = st.file_uploader("Ground-truth t1 (.nc)", type=["nc"], key="nc_t1")
+        with c3:
+            f2 = st.file_uploader("Input t2 (.nc)", type=["nc"], key="nc_t2")
+        if f0 and f2:
+            with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+                tmp.write(f0.getvalue())
+                p0 = Path(tmp.name)
+            with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+                tmp.write(f2.getvalue())
+                p2 = Path(tmp.name)
+            try:
+                r0, r2 = load_nc_radiance(p0), load_nc_radiance(p2)
+            finally:
+                p0.unlink()
+                p2.unlink()
+            vmin, vmax = global_stretch([r0, r2])
+            with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+                tmp.write(f0.getvalue())
+                p0 = Path(tmp.name)
+            t0 = rad_to_rgb(load_nc_radiance(p0), vmin, vmax, size)
+            p0.unlink()
+            name_t0 = f0.name
+            with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+                tmp.write(f2.getvalue())
+                p2 = Path(tmp.name)
+            t2 = rad_to_rgb(load_nc_radiance(p2), vmin, vmax, size)
+            p2.unlink()
+            name_t2 = f2.name
+            if f1:
+                with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+                    tmp.write(f1.getvalue())
+                    p1 = Path(tmp.name)
+                t1_gt = rad_to_rgb(load_nc_radiance(p1), vmin, vmax, size)
+                p1.unlink()
+                name_t1 = f1.name
+
+    if t0 is None or t2 is None:
+        st.info("Load or upload **Input t0** and **Input t2** to continue.")
+        return
+
+    st.subheader("Inputs")
+    gap_show = st.session_state.get("s_gap")
+    show_input_row(t0, t1_gt, t2, name_t0, name_t1, name_t2, target_gap_min=gap_show)
+
+    st.divider()
+    if st.button("Predict t1 with RIFE", type="primary"):
+        model, device, _, ckpt, fp16 = get_model()
+        with st.spinner("Interpolating middle frameâ€¦"):
+            pred = predict_t1(t0, t2, model, device, scale, fp16)
+            lin = linear_t1(t0, t2)
+        st.session_state.s_pred = pred
+        st.session_state.s_lin = lin
+        st.session_state.s_ckpt = ckpt
+        st.session_state.s_sparse_px = None
+        st.session_state.s_on_disk = None
+
+    if "s_pred" not in st.session_state or st.session_state.s_pred is None:
+        return
+
+    pred = st.session_state.s_pred
+    lin = st.session_state.s_lin
+
+    if t1_gt is not None:
+        st.subheader("Metrics vs ground truth")
+        if st.session_state.get("s_ckpt"):
+            st.caption(f"Weights: `{st.session_state.s_ckpt}`")
+        r, l = all_metrics(pred, t1_gt), all_metrics(lin, t1_gt)
+        st.dataframe(
+            [
+                {"method": "RIFE (predicted t1)", **{k: round(v, 6) if k != "psnr" else round(v, 2) for k, v in r.items()}},
+                {"method": "Linear (t0+t2)/2", **{k: round(v, 6) if k != "psnr" else round(v, 2) for k, v in l.items()}},
+            ],
+            width="stretch",
+        )
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown("**Linear baseline**")
+            st.caption("Simple average of t0 and t2")
+            st.image(lin, width="stretch")
+        with c2:
+            st.markdown("**RIFE predicted t1**")
+            st.caption("Synthetic midpoint from optical-flow interpolation")
+            st.image(pred, width="stretch")
+        with c3:
+            st.markdown("**Ground-truth t1**")
+            st.caption("Real satellite scan")
+            st.image(t1_gt, width="stretch")
+
+        buf = io.BytesIO()
+        Image.fromarray(pred).save(buf, "PNG")
+        st.download_button("Download RIFE predicted t1", buf.getvalue(), "predicted_t1.png", "image/png")
+    else:
+        st.warning("Upload ground-truth t1 to see metrics and comparison images.")
+        st.image(pred, caption="RIFE predicted t1 (no ground truth to compare)", width="stretch")
+
+    st.divider()
+    st.subheader("Motion vectors & timelapse")
+    gap_amv = st.session_state.get("s_gap", 10.0)
+    st.markdown(amv_interval_caption(gap_amv))
+    st.caption(
+        "Phase-1 flow grouped into small patches â€” **no Phase-3 mask**. "
+        "One arrow per grid cell (window-averaged motion). "
+        "No arrow where that patch has no motion; slow motion kept. "
+        "Earth-disk corners excluded."
+    )
+    c_amv1, c_amv2, c_amv3 = st.columns(3)
+    with c_amv1:
+        single_step = st.slider("Grid stride (px)", 16, 48, 24, key="single_amv_step")
+    with c_amv2:
+        single_window = st.slider("Patch size (px)", 8, 24, 12, key="single_amv_window")
+    with c_amv3:
+        single_tl_ms = st.slider(
+            "Frame duration (ms)", 200, 1500, 700, 100, key="single_timelapse_ms",
+        )
+
+    if st.button("Generate motion vectors & timelapse", type="secondary", key="single_gen_amv"):
+        model, device, _, _, _ = get_model()
+        with st.spinner("Extracting AMV and drawing arrowsâ€¦"):
+            rife = extract_rife_flow(t0, t2, model, device, scale)
+            u_amv, v_amv = rife_amv_uv(rife)
+            h_amv, w_amv = u_amv.shape
+            disk_masks = st.session_state.get("s_disk")
+            if disk_masks:
+                on_disk = disk_masks[0] & disk_masks[2]
+                if on_disk.shape != (h_amv, w_amv):
+                    on_disk = resize_mask_nearest(on_disk, h_amv, w_amv)
+            else:
+                on_disk = full_disk_geometric_mask(h_amv, w_amv)
+            sparse_px = subsample_amv_grid(
+                u_amv, v_amv,
+                stride=single_step,
+                window=single_window,
+                on_disk=on_disk,
+                min_mag_px=0.001,
+            )
+        st.session_state.s_sparse_px = sparse_px
+        st.session_state.s_on_disk = on_disk
+
+    sparse_px = st.session_state.get("s_sparse_px")
+    if sparse_px is None:
+        st.info("Click **Generate motion vectors & timelapse** to draw arrows and build GIFs.")
+    elif sparse_px.get("n_shown", 0) == 0:
+        st.warning("No arrows to draw â€” try a smaller grid stride or load a triplet with more cloud texture.")
+    else:
+        on_disk = st.session_state.get("s_on_disk")
+        arrow_kw = dict(
+            min_mag_px=0.0,
+            color_by_speed=True,
+            disk_mask=on_disk,
+            thickness=1,
+            tip_length=0.35,
+            thin_arrows=True,
+        )
+        arrow_layer = render_arrow_layer(t0.shape[:2], sparse_px, **arrow_kw)
+        st.caption(
+            f"**{sparse_px['n_shown']}/{sparse_px['n_grid']}** patch arrows "
+            f"(stride {single_step}px Â· window {single_window}px) Â· "
+            f"no quality mask Â· slow motion included"
+        )
+
+        st.markdown("#### Four frames with AMV arrows")
+        four_specs = [
+            ("t0", t0),
+            ("t1 ground truth", t1_gt),
+            ("t2", t2),
+            ("t1 predicted", pred),
+        ]
+        cols4 = st.columns(4)
+        for col, (lbl, frame) in zip(cols4, four_specs):
+            with col:
+                if frame is not None:
+                    st.image(
+                        composite_sparse_arrows(frame, sparse_px, arrow_layer=arrow_layer),
+                        caption=lbl,
+                        width="stretch",
+                    )
+                else:
+                    st.caption(f"{lbl} â€” not loaded")
+
+        lapses = build_motion_timelapses(t0, t1_gt, t2, pred, sparse_px, arrow_kw=arrow_kw)
+        st.markdown("#### Timelapse GIFs")
+        lc1, lc2 = st.columns(2)
+        with lc1:
+            st.markdown("**Predicted timelapse** â€” t0 â†’ RIFE t1 â†’ t2")
+            st.image(
+                lapses["predicted"][1],
+                caption="Preview: predicted mid-frame + arrows",
+                width="stretch",
+            )
+            pred_gif = frames_to_gif_bytes(lapses["predicted"], duration_ms=single_tl_ms)
+            st.download_button(
+                "Download predicted timelapse GIF",
+                pred_gif,
+                "amv_timelapse_predicted.gif",
+                "image/gif",
+                key="single_dl_pred_timelapse",
+            )
+        with lc2:
+            if lapses["ground_truth"] is not None:
+                st.markdown("**Ground-truth timelapse** â€” t0 â†’ real t1 â†’ t2")
+                st.image(
+                    lapses["ground_truth"][1],
+                    caption="Preview: real mid-frame + arrows",
+                    width="stretch",
+                )
+                gt_gif = frames_to_gif_bytes(lapses["ground_truth"], duration_ms=single_tl_ms)
+                st.download_button(
+                    "Download ground-truth timelapse GIF",
+                    gt_gif,
+                    "amv_timelapse_ground_truth.gif",
+                    "image/gif",
+                    key="single_dl_gt_timelapse",
+                )
+            else:
+                st.info("No ground-truth t1 loaded â€” only the predicted timelapse is available.")
+
+
 def main():
     import streamlit as st
-    st.set_page_config("ISRO PS12", layout="wide")
-    st.title("ISRO PS12 â€” FillFrame")
-    st.info("Core inference ready â€” UI tabs landing next.")
+    scale, size = sidebar_settings()
+    st.title("ISRO PS12 â€” Satellite Frame Interpolation")
+    tab_single(scale, size)
 
 if __name__ == "__main__":
     main()
