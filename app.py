@@ -1540,14 +1540,380 @@ def tab_batch(scale, size):
         st.download_button("Download CSV", df.to_csv(index=False), "validation_results.csv")
 
 
+def tab_video(scale, size):
+    st.header("Video / GIF frame interpolation")
+    st.caption("Increase smoothness: insert frames between each pair.")
+
+    src = st.radio("Source", ["Upload GIF", "Upload MP4", "Local goes_animation.gif"], horizontal=True)
+    multi = st.selectbox("Multiplier", [2, 4], index=0)
+    frames = []
+
+    if src == "Upload GIF":
+        up = st.file_uploader("GIF", type=["gif"])
+        if up: frames = load_gif_frames(up)
+    elif src == "Upload MP4":
+        up = st.file_uploader("MP4", type=["mp4", "avi", "mov"])
+        if up: frames = load_video_frames(up, max_frames=60)
+    else:
+        gif_path = ROOT / "goes_animation.gif"
+        if gif_path.exists():
+            frames = load_gif_frames(gif_path)
+        else:
+            st.warning(f"Not found: {gif_path}")
+
+    if not frames:
+        st.info("Upload or provide a GIF/video.")
+        return
+
+    # resize for speed
+    frames = [
+        np.array(Image.fromarray(f).resize((size, size), Image.Resampling.BILINEAR))
+        for f in frames[:30]
+    ]
+    st.caption(f"{len(frames)} frames loaded @ {size}px")
+
+    if st.button("Interpolate", type="primary"):
+        model, device, version, _, fp16 = get_model()
+        with st.spinner("Interpolatingâ€¦"):
+            smooth = upscale_sequence(frames, multi, model, device, version, scale, fp16)
+        st.session_state.v_out = smooth
+        st.success(f"{len(frames)} â†’ {len(smooth)} frames")
+
+    if "v_out" not in st.session_state:
+        return
+
+    out = st.session_state.v_out
+    duration = max(30, int(300 / multi))
+    gif_bytes = frames_to_gif_bytes(out, duration_ms=duration)
+    st.image(out[0], caption="First output frame")
+    st.download_button("Download GIF", gif_bytes, "interpolated.gif", "image/gif")
+
+
+def tab_motion(scale, size):
+    st.header("Motion vectors / AMV")
+    st.caption(
+        "Midpoint **AMV** from bidirectional RIFE flow (average of t0â†’t1 and t2â†’t1), "
+        "plus Farneback baseline and warp ablation vs ground-truth t1."
+    )
+
+    loaded = load_triplet_ui("motion", size)
+    if loaded is not None:
+        t0, t1_gt, t2, n0, n1, n2, rads, disk_masks, refs, gap = loaded
+        st.session_state.update(
+            m_t0=t0, m_t1=t1_gt, m_t2=t2,
+            m_n0=n0, m_n1=n1, m_n2=n2, m_gap=gap,
+            m_rads=rads, m_disk=disk_masks, m_refs=refs, m_results=None,
+        )
+
+    t0 = st.session_state.get("m_t0")
+    t2 = st.session_state.get("m_t2")
+    t1_gt = st.session_state.get("m_t1")
+    if t0 is None or t2 is None:
+        st.info("Load a triplet above (Arthur + 20â€“30 min gap recommended).")
+        return
+
+    show_input_row(
+        t0, t1_gt, t2,
+        st.session_state.get("m_n0", ""),
+        st.session_state.get("m_n1", ""),
+        st.session_state.get("m_n2", ""),
+        target_gap_min=st.session_state.get("m_gap"),
+    )
+
+    st.divider()
+    c_f1, c_f2, c_f3 = st.columns(3)
+    with c_f1:
+        quiver_step = st.slider("Grid stride (px)", 12, 48, 24)
+    with c_f2:
+        quiver_window = st.slider("Average window (px)", 4, 20, 10)
+    with c_f3:
+        texture_pct = st.slider("Min texture percentile", 5, 40, 15)
+    c_f4, c_f5, c_f6 = st.columns(3)
+    with c_f4:
+        disagree_max = st.slider("Max disagreement (px)", 0.1, 2.0, 0.5, 0.1)
+    with c_f5:
+        use_rife_mask = st.checkbox("Filter by RIFE mask", value=True)
+    with c_f6:
+        show_dense = st.checkbox("Show dense quiver (unfiltered)", value=False)
+    edge_erode_px = st.slider(
+        "Shrink Earth mask inward (px)", 0, 15, 3,
+        help="Excludes a thin band just inside the Earth limb from AMV validity. "
+             "That band is contaminated by a resize-blending halo (real edge "
+             "brightness mixed with off-disk fill) that mimics cloud texture â€” "
+             "raise this if the quality-mask ring around the disk edge persists.",
+    )
+
+    if st.button("Extract flow & compare methods", type="primary"):
+        model, device, _, ckpt, _ = get_model()
+        with st.spinner("Estimating motion vectorsâ€¦"):
+            rows, data = compare_interpolation_methods(t0, t2, t1_gt, model, device, scale)
+        u_amv, v_amv = data["amv_uv"]
+        h_amv, w_amv = u_amv.shape
+        refs = st.session_state.get("m_refs")
+        gap = st.session_state.get("m_gap", 10.0)
+        geo_note = ""
+        try:
+            if refs and refs[0].uri:
+                lat, lon = _cached_geogrid(
+                    refs[0].uri, refs[0].source_id, h_amv, w_amv, refs[0].segment_uris,
+                )
+                geo_note = f"Projection from `{refs[0].name}`"
+            else:
+                lat, lon = _fallback_geogrid(h_amv, w_amv)
+                geo_note = "Approximate full-disk lat/lon (upload / no NetCDF ref)"
+        except Exception as exc:
+            lat, lon = _fallback_geogrid(h_amv, w_amv)
+            geo_note = f"Geo fallback (could not read projection: {exc})"
+        ms = amv_speed_ms(u_amv, v_amv, lat, lon, gap)
+        st.session_state.m_results = data
+        st.session_state.m_rows = rows
+        st.session_state.m_ckpt = ckpt
+        st.session_state.m_ms = ms
+        st.session_state.m_geo_note = geo_note
+
+    if st.session_state.get("m_results") is None:
+        return
+
+    gap = st.session_state.get("m_gap", 10.0)
+    st.markdown(amv_interval_caption(gap))
+
+    data = st.session_state.m_results
+    rife = data["rife_flow"]
+    u_amv, v_amv = data["amv_uv"]
+    u_fwd, v_fwd = data["forward_uv"]
+    disagree = data["flow_disagreement"]
+    rads = st.session_state.get("m_rads")
+
+    mag_amv = np.sqrt(u_amv * u_amv + v_amv * v_amv)
+    mag_fwd = np.sqrt(u_fwd * u_fwd + v_fwd * v_fwd)
+    ms = st.session_state.get("m_ms")
+    geo_note = st.session_state.get("m_geo_note", "")
+    bg_gray = rads[0] if rads else None
+    bg = t0 if bg_gray is None else None
+    bg_plot = bg if bg is not None else bg_gray
+
+    radiance_for_mask = bg_gray if bg_gray is not None else gray01(t0)
+    rife_mask = rife.get("mask")
+
+    disk_masks = st.session_state.get("m_disk")
+    if disk_masks:
+        # A pixel only has a meaningful bidirectional AMV if it was real Earth data
+        # (not off-disk fill) in *both* t0 and t2 â€” intersect the two footprints.
+        on_disk = disk_masks[0] & disk_masks[2]
+        if on_disk.shape != u_amv.shape:
+            on_disk = resize_mask_nearest(on_disk, *u_amv.shape)
+    else:
+        # No radiance-derived footprint (e.g. legacy/plain-image load) â€” approximate
+        # with the full-disk circle geometry rather than treating every pixel as Earth.
+        on_disk = full_disk_geometric_mask(*u_amv.shape)
+    on_disk = erode_mask(on_disk, int(edge_erode_px))
+
+    filt = build_filtered_amv(
+        u_amv, v_amv, radiance_for_mask, disagree,
+        ux_ms=ms["ux_ms"] if ms else None,
+        uy_ms=ms["uy_ms"] if ms else None,
+        speed_ms=ms["speed_ms"] if ms else None,
+        rife_mask=rife_mask,
+        on_disk=on_disk,
+        stride=quiver_step,
+        window=quiver_window,
+        texture_percentile=float(texture_pct),
+        disagree_px_max=float(disagree_max),
+        use_rife_mask=use_rife_mask,
+    )
+
+    st.subheader("Filtered AMV product (Phase 3)")
+    st.markdown(filtered_amv_caption(filt))
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        if ms and filt["sparse_ms"] and filt["sparse_ms"]["n_shown"] > 0:
+            fig = plot_flow_quiver(
+                ms["ux_ms"], ms["uy_ms"],
+                title=f"Filtered AMV ({gap:.0f} min) â€” m/s",
+                background=bg_plot,
+                units="ms",
+                sparse=filt["sparse_ms"],
+            )
+        else:
+            fig = plot_flow_quiver(
+                u_amv, v_amv,
+                title=f"Filtered AMV ({gap:.0f} min) â€” px",
+                background=bg_plot,
+                sparse=filt["sparse_px"],
+            )
+        st.pyplot(fig)
+        plt.close(fig)
+    with c2:
+        fig = plot_validity_mask(filt["valid_mask"], background=bg_plot)
+        st.pyplot(fig)
+        plt.close(fig)
+    with c3:
+        tex = filt["texture"]
+        tex_vis = np.clip(tex / (np.percentile(tex, 99) + 1e-6), 0, 1)
+        st.image(
+            np.stack([(tex_vis * 255).astype(np.uint8)] * 3, axis=-1),
+            caption="Texture (bright = trackable features)",
+            width="stretch",
+        )
+
+    # -------------------------------------------------------------------
+    # Phase 4: motion timelapse â€” apply the filtered AMV arrows to t0,
+    # ground-truth t1, t2, and the RIFE-predicted t1, then group them into
+    # two 3-frame timelapse GIFs (ground truth vs. predicted) so the
+    # direction of cloud motion can be checked visually against the arrows.
+    # -------------------------------------------------------------------
+    st.subheader("Motion timelapse â€” does the arrow field match real cloud motion?")
+    st.caption(
+        "AMV arrows are drawn on t0, t2, and the middle frame, grouped into two "
+        "sequences: **ground truth** (real t0 â†’ real t1 â†’ real t2) and **predicted** "
+        "(t0 â†’ RIFE-predicted t1 â†’ t2). Download and play both to see whether the "
+        "clouds actually move the way the arrows point."
+    )
+    t1_pred = data.get("full")
+    # Unfiltered: every stride-grid cell across the full frame, ignoring the
+    # texture/disagreement/RIFE-mask/on-disk quality mask above â€” this is the
+    # dense (u_amv, v_amv) field, just window-averaged and subsampled by stride
+    # so arrows don't overlap on screen. No pixels are dropped for "quality".
+    sparse_all = subsample_amv_grid(u_amv, v_amv, stride=quiver_step, window=quiver_window)
+    if sparse_all["n_shown"] == 0:
+        st.info("No arrows to draw â€” try a smaller grid stride above.")
+    elif t1_pred is None:
+        st.info("Predicted t1 not available â€” run **Extract flow & compare methods** again.")
+    else:
+        timelapse_ms = st.slider(
+            "Frame duration (ms)", 200, 1500, 700, 100, key="m_timelapse_ms",
+            help="How long each of the 3 frames (t0 â†’ mid â†’ t2) is shown before looping.",
+        )
+        st.caption(f"Showing all **{sparse_all['n_shown']}/{sparse_all['n_grid']}** grid arrows â€” quality filter not applied.")
+        lapses = build_motion_timelapses(t0, t1_gt, t2, t1_pred, sparse_all)
+
+        lc1, lc2 = st.columns(2)
+        with lc1:
+            st.markdown("**Predicted timelapse** â€” t0 â†’ RIFE t1 â†’ t2")
+            st.image(lapses["predicted"][1], caption="Preview: predicted mid-frame + arrows", width="stretch")
+            pred_gif = frames_to_gif_bytes(lapses["predicted"], duration_ms=timelapse_ms)
+            st.download_button(
+                "Download predicted timelapse GIF",
+                pred_gif,
+                "amv_timelapse_predicted.gif",
+                "image/gif",
+                key="dl_pred_timelapse",
+            )
+        with lc2:
+            if lapses["ground_truth"] is not None:
+                st.markdown("**Ground-truth timelapse** â€” t0 â†’ real t1 â†’ t2")
+                st.image(lapses["ground_truth"][1], caption="Preview: real mid-frame + arrows", width="stretch")
+                gt_gif = frames_to_gif_bytes(lapses["ground_truth"], duration_ms=timelapse_ms)
+                st.download_button(
+                    "Download ground-truth timelapse GIF",
+                    gt_gif,
+                    "amv_timelapse_ground_truth.gif",
+                    "image/gif",
+                    key="dl_gt_timelapse",
+                )
+            else:
+                st.info("No ground-truth t1 was loaded for this triplet â€” only the predicted timelapse is available.")
+
+    with st.expander("Dense / unfiltered views (Phase 1â€“2)", expanded=show_dense):
+        st.subheader("AMV visualization (bidirectional midpoint)")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.image(
+                flow_to_rgb(u_amv, v_amv),
+                caption="AMV color map (hue=direction, brightness=speed)",
+                width="stretch",
+            )
+        with c2:
+            fig = plot_flow_quiver(
+                u_amv, v_amv, step=quiver_step,
+                title=f"AMV quiver ({gap:.0f} min step)",
+                background=bg_plot,
+            )
+            st.pyplot(fig)
+            plt.close(fig)
+        with c3:
+            st.image(
+                np.stack([(np.clip(disagree / (np.percentile(disagree, 99) + 1e-6), 0, 1) * 255).astype(np.uint8)] * 3, axis=-1),
+                caption="Forward/backward disagreement (bright = uncertain)",
+                width="stretch",
+            )
+
+        st.caption(
+            f"AMV: mean speed={mag_amv.mean():.2f} px, max={mag_amv.max():.2f} px Â· "
+            f"forward-only mean={mag_fwd.mean():.2f} px Â· "
+            f"disagreement mean={disagree.mean():.2f} px Â· "
+            f"smoothness={flow_smoothness(u_amv, v_amv):.4f}"
+        )
+
+        st.subheader("Physical velocity (m/s)")
+        if ms:
+            st.caption(geo_note)
+            st.markdown(speed_ms_caption(ms))
+            c1, c2 = st.columns(2)
+            with c1:
+                fig = plot_flow_quiver(
+                    ms["ux_ms"], ms["uy_ms"], step=quiver_step,
+                    title=f"AMV quiver ({gap:.0f} min) â€” m/s",
+                    background=bg_plot,
+                    units="ms",
+                )
+                st.pyplot(fig)
+                plt.close(fig)
+            with c2:
+                fig = plot_speed_heatmap(
+                    ms["speed_ms_clipped"],
+                    background=bg_plot,
+                    title="AMV speed (m/s)",
+                )
+                st.pyplot(fig)
+                plt.close(fig)
+        else:
+            st.info("Re-run **Extract flow** to compute m/s velocities.")
+
+    with st.expander("Forward-only flow (t0 â†’ midpoint, for comparison)"):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.image(flow_to_rgb(u_fwd, v_fwd), caption="Forward-only color map", width="stretch")
+        with c2:
+            fig = plot_flow_quiver(u_fwd, v_fwd, step=quiver_step, title="Forward-only quiver", background=bg_plot)
+            st.pyplot(fig)
+            plt.close(fig)
+
+    if t1_gt is not None:
+        st.subheader("Interpolation ablation vs ground truth")
+        if st.session_state.get("m_ckpt"):
+            st.caption(f"Weights: `{st.session_state.m_ckpt}`")
+        import pandas as pd
+        st.dataframe(pd.DataFrame(st.session_state.m_rows), width="stretch")
+
+        st.subheader("Visual comparison")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.markdown("**Farneback**")
+            st.image(data["farneback"], width="stretch")
+        with c2:
+            st.markdown("**RIFE flow-only**")
+            st.caption("Warp + mask only")
+            st.image(data["flow_only"], width="stretch")
+        with c3:
+            st.markdown("**RIFE full**")
+            st.image(data["full"], width="stretch")
+        with c4:
+            st.markdown("**Ground-truth t1**")
+            st.image(t1_gt, width="stretch")
+    else:
+        st.warning("No ground-truth t1 â€” flow maps only.")
+
+
 
 def main():
     import streamlit as st
     scale, size = sidebar_settings()
     st.title("ISRO PS12 â€” Satellite Frame Interpolation")
-    t1, t2 = st.tabs(["Single triplet", "Batch validate"])
+    t1, t2, t3 = st.tabs(["Single triplet", "Batch validate", "Motion vectors"])
     with t1: tab_single(scale, size)
     with t2: tab_batch(scale, size)
+    with t3: tab_motion(scale, size)
 
 if __name__ == "__main__":
     main()
