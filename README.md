@@ -28,6 +28,22 @@ Classical optical-flow interpolation blurs cloud edges, smears divergent convect
 | INSAT-3DS / 3DR | TIR1 (~10.8 µm) | ~30 min | 15 min · 7.5 min |
 | GOES-19 ABI | Ch.13 (~10.3 µm) | ~10 min | 5 min |
 | Himawari-8/9 AHI | Band 13 (~10.4 µm) | ~10 min | 5 min |
+| GK-2A AMI | IR105 (~10.5 µm) | ~10 min | 5 min |
+
+## Multi-satellite sources
+
+Catalog support lives in `s3_catalog.py` and streams radiance **without copying datasets to disk**:
+
+| Source ID | Platform | Access |
+|-----------|----------|--------|
+| `goes19_c13` | GOES-19 ABI Ch.13 radiance | Public NOAA S3 `noaa-goes19` |
+| `goes19_c13_bt` | GOES-19 ABI Ch.13 brightness temp (L2) | Public NOAA S3 |
+| `himawari8_b13` | Himawari-8 AHI Band 13 (HSD) | Public NOAA S3 `noaa-himawari8` |
+| `himawari9_b13` | Himawari-9 AHI Band 13 (HSD) | Public NOAA S3 `noaa-himawari9` |
+| `gk2a_ir105` | GK-2A AMI IR105 | Public NOAA S3 `noaa-gk2a-pds` |
+| `insat3ds_tir1` / `insat_mount` | INSAT-3DS/3DR TIR1 | ISRO private bucket or EC2 data mount |
+
+Train / validate on high-cadence GOES or Himawari; deploy the same model on INSAT for the PS12 30→15→7.5 min target.
 
 ## Status
 
