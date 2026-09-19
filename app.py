@@ -1442,11 +1442,112 @@ def tab_single(scale, size):
                 st.info("No ground-truth t1 loaded â€” only the predicted timelapse is available.")
 
 
+def tab_batch(scale, size):
+    st.header("Batch validate")
+    st.caption("Runs all triplets: t0+t2â†’pred t1, compare each to real t1.")
+
+    use_catalog = aws_deploy_mode() or not find_nc_folders()
+    refs: list[NcRef] = []
+    info: dict = {}
+    gap_min = 10.0
+    rad_var: str | None = None
+    label = ""
+
+    if use_catalog:
+        sources = satellite_sources()
+        source_id = st.selectbox(
+            "Satellite",
+            list(sources.keys()),
+            format_func=lambda k: sources[k].label,
+            key="batch_source",
+        )
+        src = sources[source_id]
+        c1, c2 = st.columns(2)
+        with c1:
+            day = st.date_input("UTC date", value=date.today(), key="batch_date")
+        with c2:
+            hour_opts = ["All hours"] + [f"{h:02d}:00 UTC" for h in range(24)]
+            hour_sel = st.selectbox("Hour filter", hour_opts, key="batch_hour")
+        hour = None if hour_sel == "All hours" else int(hour_sel.split(":")[0])
+        gap_min = gap_minutes_input("batch_gap", default=src.default_cadence_min)
+        if st.button("List scans for batch", key="batch_list"):
+            with st.spinner("Listing S3â€¦"):
+                try:
+                    dicts = _cached_list_scans(source_id, day.isoformat(), hour)
+                except Exception as exc:
+                    st.error(str(exc))
+                    dicts = []
+                st.session_state.batch_refs = dicts
+                st.session_state.batch_rad_var = src.rad_var
+                st.session_state.batch_label = src.label
+        raw = st.session_state.get("batch_refs", [])
+        refs = [NcRef.from_dict(d) for d in raw]
+        label = st.session_state.get("batch_label", src.label)
+        rad_var = st.session_state.get("batch_rad_var", src.rad_var)
+        if not refs:
+            st.info("List scans for a date, then run batch validation.")
+            return
+        info = show_gap_resolution(refs, gap_min, label=label)
+    else:
+        folders = find_nc_folders()
+        if not folders:
+            st.warning("No local .nc folder â€” use AWS S3 catalog.")
+            return
+        folder = st.selectbox("Folder", folders, format_func=folder_label, key="batch_folder")
+        gap_min = gap_minutes_input("batch_gap", default=20.0)
+        refs = list_nc_files(folder)
+        info = show_gap_resolution(refs, gap_min, folder=folder)
+        label = folder.name
+
+    n_trips = info.get("n_triplets", 0)
+    if n_trips == 0:
+        return
+    st.caption(f"**{n_trips}** triplets Â· actual step **{info['actual_step_min']:.0f} min**")
+    limit = st.number_input("Max triplets (0=all)", 0, 500, 0)
+    lim = None if limit == 0 else int(limit)
+
+    if st.button("Run batch validation", type="primary"):
+        model, device, version, ckpt, fp16 = get_model()
+        prog = st.progress(0)
+        rows = run_batch_validation_gaps(
+            refs, size, gap_min, model, device, version, scale, fp16, prog, lim, rad_var=rad_var
+        )
+        prog.empty()
+
+        import pandas as pd
+        df = pd.DataFrame(rows)
+        st.caption(
+            f"Weights: `{ckpt}` Â· {label} Â· step **{info['actual_step_min']:.0f} min** Â· "
+            f"t0â†’t2 **â‰ˆ {info['total_span_min']:.0f} min**"
+        )
+        st.dataframe(df, width="stretch")
+
+        delta = df["rife_ssim"].mean() - df["linear_ssim"].mean()
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("RIFE SSIM", f"{df['rife_ssim'].mean():.4f}")
+        c2.metric("Linear SSIM", f"{df['linear_ssim'].mean():.4f}")
+        c3.metric("Î” SSIM", f"{delta:+.4f}", delta_color="normal" if delta >= 0 else "inverse")
+        c4.metric("RIFE FSIM", f"{df['rife_fsim'].mean():.4f}")
+        c5.metric("Triplets", len(df))
+
+        fig, ax = plt.subplots(figsize=(8, 3))
+        ax.plot(df["i"], df["rife_ssim"], label="RIFE SSIM")
+        ax.plot(df["i"], df["linear_ssim"], label="Linear SSIM", linestyle="--")
+        ax.set_xlabel("Triplet"); ax.set_ylabel("SSIM"); ax.legend(); ax.grid(alpha=0.3)
+        st.pyplot(fig)
+        plt.close(fig)
+
+        st.download_button("Download CSV", df.to_csv(index=False), "validation_results.csv")
+
+
+
 def main():
     import streamlit as st
     scale, size = sidebar_settings()
     st.title("ISRO PS12 â€” Satellite Frame Interpolation")
-    tab_single(scale, size)
+    t1, t2 = st.tabs(["Single triplet", "Batch validate"])
+    with t1: tab_single(scale, size)
+    with t2: tab_batch(scale, size)
 
 if __name__ == "__main__":
     main()
