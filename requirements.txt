@@ -1,0 +1,26 @@
+# ISRO PS12 — AWS / local runtime
+# Use Python 3.12 for local venv (PyTorch has no stable wheels for 3.14 yet).
+streamlit>=1.28
+torch>=2.0
+torchvision>=0.15
+opencv-python>=4.8
+matplotlib>=3.7
+pillow>=10.0
+numpy>=1.24
+pandas>=2.0
+xarray>=2023.1
+netcdf4>=1.6
+h5netcdf>=1.2
+s3fs>=2023.6
+boto3>=1.34
+fsspec>=2023.6
+h5py>=3.9
+# Use 0.22+ for pre-built Python 3.12 wheels (0.20.x builds from source on Linux)
+scikit-image>=0.22
+piq>=0.8
+pyproj>=3.6
+fastapi>=0.115
+uvicorn[standard]>=0.32
+python-multipart>=0.0.12
+# Himawari-8/9 Band 13 (HSD format):
+satpy>=0.43
