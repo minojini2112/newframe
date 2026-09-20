@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: fillframe-api
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /api/health
+    envVars:
+      - key: ISRO_PS12_AWS
+        value: "1"
+      - key: CORS_ORIGINS
+        # Set in Render dashboard to your Vercel URL, e.g.
+        # https://newframe-xxxx.vercel.app,http://localhost:3000
+        sync: false
