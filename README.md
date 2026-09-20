@@ -1,50 +1,158 @@
 ﻿# FillFrame
 
-### Physics-Informed Deep Learning for Seamless Temporal Super-Resolution of Geostationary Satellite Imagery
+### Physics-informed deep learning for temporal super-resolution of geostationary satellite imagery
 
-**ISRO Problem Statement 12 â€” *Fill in the Frames Seamlessly***
+> We do not interpolate pixels. We propagate radiance through a flow field constrained by atmospheric physics — so every synthetic frame is a physically admissible state of the cloud field, not a statistical hallucination.
 
-> We do not interpolate pixels. We propagate radiance through a flow field constrained by atmospheric physics â€” so every synthetic frame is a physically admissible state of the cloud field, not a statistical hallucination.
+**Fill in the frames seamlessly** — synthesize missing thermal-infrared scans between fixed satellite cadences, with motion-aware deep learning and physics-informed training.
 
-## Problem
+Live UI: [newframe-three.vercel.app](https://newframe-three.vercel.app) · Demo assets: [Drive](https://drive.google.com/drive/folders/1RjTIGuIH572-jUZwdtExbAzGAXTq56DV?usp=sharing)
 
-Geostationary satellites observe Earth on fixed schedules â€” **INSAT-3DS/3DR every ~30 minutes**, **GOES-19 and Himawari every ~10 minutes** â€” leaving blind intervals where fires spread, cyclones intensify, and convective systems reorganize faster than the sensor cadence.
+---
 
-Classical optical-flow interpolation blurs cloud edges, smears divergent convection, and violates thermodynamic consistency.
+## Why it exists
 
-## Approach
+Geostationary satellites observe Earth on fixed schedules — **INSAT-3DS/3DR ~30 minutes**, **GOES-19 and Himawari ~10 minutes**. Between scans, fires spread, cyclones intensify, and convective systems reorganize. Classical optical-flow interpolation often blurs cloud edges, creates ghosting, and violates thermodynamic consistency.
 
-**FillFrame** couples **RIFE** (Real-Time Intermediate Flow Estimation) with a **physics-informed loss stack** (atmospheric continuity, incompressibility, brightness-temperature conservation, vorticity dynamics).
+FillFrame closes that gap with **RIFE** optical-flow interpolation plus a **physics-informed loss stack**, trained on high-cadence GOES and deployable on INSAT TIR.
 
-- Train on high-cadence **GOES-19 ABI Channel 13** (~10.3 Âµm)
-- Deploy on **INSAT-3DS TIR1** (~10.8 Âµm)
-- Target effective cadence **30 â†’ 15 â†’ 7.5 minutes** via recursive midpoint synthesis
-- Validate with **SSIM, MSE, PSNR, FSIM**
+**Target:** effective cadence **30 → 15 → 7.5 minutes** via recursive midpoint synthesis.
+
+---
+
+## Features
+
+- Stream multi-satellite TIR catalogs from public NOAA S3 (GOES, Himawari, GK-2A) without copying archives to disk
+- Midpoint frame prediction (t0 + t2 → t1) with GOES fine-tuned RIFE weights
+- Atmospheric motion vectors (AMV), Farneback baseline, and ablation views
+- Batch validation with **SSIM · MSE · PSNR · FSIM**
+- PDF evaluation reports and NetCDF frame export
+- Next.js mission console + FastAPI backend (+ Streamlit science UI)
+
+---
 
 ## Satellite targets
 
 | Satellite | TIR band | Native cadence | After FillFrame |
 |-----------|----------|----------------|-----------------|
-| INSAT-3DS / 3DR | TIR1 (~10.8 Âµm) | ~30 min | 15 min Â· 7.5 min |
-| GOES-19 ABI | Ch.13 (~10.3 Âµm) | ~10 min | 5 min |
-| Himawari-8/9 AHI | Band 13 (~10.4 Âµm) | ~10 min | 5 min |
-| GK-2A AMI | IR105 (~10.5 Âµm) | ~10 min | 5 min |
+| INSAT-3DS / 3DR | TIR1 (~10.8 µm) | ~30 min | 15 min · 7.5 min |
+| GOES-19 ABI | Ch.13 (~10.3 µm) | ~10 min | 5 min |
+| Himawari-8/9 AHI | Band 13 (~10.4 µm) | ~10 min | 5 min |
+| GK-2A AMI | IR105 (~10.5 µm) | ~10 min | 5 min |
 
-## Multi-satellite sources
+---
 
-Catalog support lives in `s3_catalog.py` and streams radiance **without copying datasets to disk**:
+## Architecture
 
-| Source ID | Platform | Access |
-|-----------|----------|--------|
-| `goes19_c13` | GOES-19 ABI Ch.13 radiance | Public NOAA S3 `noaa-goes19` |
-| `goes19_c13_bt` | GOES-19 ABI Ch.13 brightness temp (L2) | Public NOAA S3 |
-| `himawari8_b13` | Himawari-8 AHI Band 13 (HSD) | Public NOAA S3 `noaa-himawari8` |
-| `himawari9_b13` | Himawari-9 AHI Band 13 (HSD) | Public NOAA S3 `noaa-himawari9` |
-| `gk2a_ir105` | GK-2A AMI IR105 | Public NOAA S3 `noaa-gk2a-pds` |
-| `insat3ds_tir1` / `insat_mount` | INSAT-3DS/3DR TIR1 | ISRO private bucket or EC2 data mount |
+```
+┌─────────────────┐     NEXT_PUBLIC_API_URL      ┌──────────────────────┐
+│  Next.js UI     │ ───────────────────────────► │  FastAPI (uvicorn)   │
+│  Mission Console│                              │  RIFE + S3 catalog   │
+└─────────────────┘                              └──────────┬───────────┘
+                                                            │
+                                              Public NOAA S3 / mounts
+```
 
-Train / validate on high-cadence GOES or Himawari; deploy the same model on INSAT for the PS12 30â†’15â†’7.5 min target.
+| Layer | Stack |
+|-------|--------|
+| Frontend | Next.js 15, React 19, TypeScript, Tailwind, Recharts |
+| API | FastAPI, Uvicorn, PyTorch, OpenCV, xarray, s3fs |
+| Models | Practical-RIFE v4.25 + `checkpoints/goes_finetuned` |
+| Science UI | Streamlit (`app.py`) |
+| Metrics | scikit-image, piq |
 
-## Status
+---
 
-Streamlit app, FastAPI backend, and Next.js dashboard are in place. Deploy scripts and full docs land next.
+## Quick start (local)
+
+### Prerequisites
+
+- Python **3.12**
+- Node.js **20+**
+- Git
+
+### 1. Backend
+
+```bash
+python3.12 -m venv .venv
+# Windows: .venv\Scripts\activate
+source .venv/bin/activate
+
+pip install -r requirements.txt
+python setup_rife.py
+
+# Ensure checkpoint exists:
+#   checkpoints/goes_finetuned/flownet.pkl
+
+uvicorn api_server:app --host 127.0.0.1 --port 8000
+```
+
+Health: [http://127.0.0.1:8000/api/health](http://127.0.0.1:8000/api/health)
+
+### 2. Frontend
+
+```bash
+cd Frontend
+npm install
+set NEXT_PUBLIC_API_URL=http://127.0.0.1:8000   # Windows PowerShell: $env:NEXT_PUBLIC_API_URL=...
+npm run dev
+```
+
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000)
+
+### Typical workflow
+
+1. **List scans** (e.g. GOES-19, date `2026-06-12`)
+2. Set **Size → 256** on CPU hosts
+3. **Load triplet** → **Predict t1**
+4. Inspect **Interpolation**, **Motion / AMV**, **Batch Validate**
+
+---
+
+## Deployed demos
+
+| Surface | Link |
+|---------|------|
+| Mission console (UI) | [newframe-three.vercel.app](https://newframe-three.vercel.app) |
+| API health | [newframe.onrender.com/api/health](https://newframe.onrender.com/api/health) |
+| Demo assets / video | [Google Drive folder](https://drive.google.com/drive/folders/1RjTIGuIH572-jUZwdtExbAzGAXTq56DV?usp=sharing) |
+
+> **Note:** Full Load triplet / Predict pulls large NetCDF objects from S3 and runs RIFE on CPU. Free hosting tiers may time out; use a stronger host or the demo video for lightweight review.
+
+---
+
+## Repository layout
+
+```
+├── api_server.py          # FastAPI backend
+├── app.py                 # Streamlit science UI
+├── s3_catalog.py          # Multi-satellite S3 / mount catalog
+├── amv.py                 # Atmospheric motion vector helpers
+├── physics_losses.py      # Physics-informed training losses
+├── metrics.py             # SSIM / MSE / PSNR / FSIM
+├── finetune_goes.py       # GOES fine-tune
+├── finetune_physics.py    # Physics-informed fine-tune
+├── setup_rife.py          # Clone RIFE + base weights
+├── report_pdf.py          # PDF evaluation report
+├── checkpoints/           # goes_finetuned/flownet.pkl
+├── Frontend/              # Next.js mission console
+├── Dockerfile             # Render / container API deploy
+└── docs                   # AWS_DEPLOY.md · DATA_ACCESS.md · RENDER_DEPLOY.md
+```
+
+---
+
+## Environment
+
+| Variable | Where | Purpose |
+|----------|--------|---------|
+| `NEXT_PUBLIC_API_URL` | Frontend / Vercel | Backend base URL |
+| `NEXT_PUBLIC_DEMO_VIDEO_URL` | Frontend / Vercel | Landing “demo video” link |
+| `CORS_ORIGINS` | Backend | Allowed UI origins (comma-separated) |
+| Catalog / S3 mode | Backend | Enable public NOAA catalog defaults via deploy scripts |
+
+---
+
+## License & acknowledgment
+
+Built for the *Fill in the Frames Seamlessly* temporal super-resolution challenge. Satellite open data courtesy of **NOAA** public AWS registries (GOES, Himawari, GK-2A).
