@@ -60,6 +60,11 @@ const DEFAULT_DAY = "2026-06-12";
 const HIMAWARI8_DEFAULT_DAY = "2022-06-30";
 const HIMAWARI8_LAST_DAY = "2022-12-31";
 
+/** Demo assets (video + screenshots). Override with NEXT_PUBLIC_DEMO_VIDEO_URL on Vercel if needed. */
+const DEMO_VIDEO_URL =
+  process.env.NEXT_PUBLIC_DEMO_VIDEO_URL ??
+  "https://drive.google.com/drive/folders/1RjTIGuIH572-jUZwdtExbAzGAXTq56DV?usp=sharing";
+
 /** Hidden from the mission console dropdown (still available via API / Streamlit). */
 const HIDDEN_SOURCE_IDS = new Set(["himawari9_b13", "gk2a_ir105"]);
 
@@ -536,6 +541,27 @@ export default function PS12Dashboard() {
   const [reportLoading, setReportLoading] = useState(false);
   const [ncDownload, setNcDownload] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showHostedNotice, setShowHostedNotice] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!sessionStorage.getItem("fillframe_hosted_notice_dismissed")) {
+      setShowHostedNotice(true);
+    }
+  }, []);
+
+  const dismissHostedNotice = useCallback(() => {
+    setShowHostedNotice(false);
+    try {
+      sessionStorage.setItem("fillframe_hosted_notice_dismissed", "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const openDemoVideo = useCallback(() => {
+    window.open(DEMO_VIDEO_URL, "_blank", "noopener,noreferrer");
+  }, []);
 
   const reqBase = useMemo(
     () => ({
@@ -925,6 +951,44 @@ export default function PS12Dashboard() {
 
   return (
     <div className={`${display.variable} ${mono.variable} h-screen flex overflow-hidden`} style={{ fontFamily: "var(--font-display)" }}>
+      {showHostedNotice && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="hosted-notice-title"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-white/[0.1] bg-[var(--panel-elevated)] p-6 shadow-2xl">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--warm)] font-[family-name:var(--font-mono)]">
+              Live demo notice
+            </p>
+            <h2 id="hosted-notice-title" className="mt-3 text-lg font-semibold leading-snug text-[var(--text)]">
+              Backend fetches heavy satellite data
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-[var(--muted)]">
+              Full Predict / Load triplet needs a strong always-on server. The free hosting tier is limited, so
+              S3 downloads and RIFE inference may time out. Would you like to watch the demo video instead?
+            </p>
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={dismissHostedNotice}
+                className="rounded-lg border border-white/[0.12] px-4 py-2.5 text-sm text-[var(--text)] hover:bg-white/[0.04]"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={openDemoVideo}
+                className="rounded-lg bg-[var(--warm)] px-4 py-2.5 text-sm font-medium text-[#1a120e] hover:brightness-110"
+              >
+                Watch demo video
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <aside className="w-72 shrink-0 border-r border-[var(--border)] bg-[var(--panel)] flex flex-col">
         <div className="p-5 border-b border-[var(--border)]">
